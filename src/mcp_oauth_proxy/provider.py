@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import secrets
 import time
 
 from mcp.server.auth.provider import (
@@ -62,8 +64,24 @@ class SecretOAuthProvider(OAuthProvider):
         )
 
     # --- implemented in Tasks 6-8 ---
+    def _login_url(self, txn_id: str) -> str:
+        return f"{self._settings.public_url}/login?txn={txn_id}"
+
+    def _txn_payload(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> dict:
+        return {
+            "client_id": client.client_id,
+            "redirect_uri": str(params.redirect_uri),
+            "redirect_uri_provided_explicitly": params.redirect_uri_provided_explicitly,
+            "scopes": params.scopes or [],
+            "state": params.state,
+            "code_challenge": params.code_challenge,
+        }
+
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
-        raise NotImplementedError  # Task 6
+        txn_id = secrets.token_urlsafe(32)
+        payload = json.dumps(self._txn_payload(client, params))
+        self._storage.save_txn(txn_id, payload, time.time() + self._settings.auth_code_ttl)
+        return self._login_url(txn_id)
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
