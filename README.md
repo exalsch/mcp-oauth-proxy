@@ -6,7 +6,7 @@ claude.ai's custom connectors speak remote MCP over HTTPS and authenticate with 
 
 ## Status
 
-🚧 Scaffolding. See [`docs/superpowers/specs/2026-07-06-mcp-oauth-proxy-design.md`](docs/superpowers/specs/2026-07-06-mcp-oauth-proxy-design.md) for the design.
+Usable. See [`deploy/README.md`](deploy/README.md) for the full deployment guide (Caddy, Tailscale, headless Obsidian). Design details: [`docs/superpowers/specs/2026-07-06-mcp-oauth-proxy-design.md`](docs/superpowers/specs/2026-07-06-mcp-oauth-proxy-design.md).
 
 ## First use case
 
@@ -16,4 +16,18 @@ Expose [`mcp-obsidian`](https://github.com/MarkusPfundstein/mcp-obsidian) — ma
 
 ```
 claude.ai → Caddy (TLS) → mcp-oauth-proxy (OAuth 2.1 + FastMCP proxy) → stdio backend → (tailscale) → Obsidian REST API
+```
+
+## Wrapping other MCP servers
+
+The proxy is **backend-agnostic**. To expose a different stdio MCP server:
+
+1. Set `MCP_BACKEND_COMMAND` and `MCP_BACKEND_ARGS` to invoke your server (defaults: `uvx` and `mcp-obsidian`).
+2. Use `MCP_BACKEND_ENV_*` to forward environment variables to the backend (e.g., `MCP_BACKEND_ENV_API_KEY=secret` becomes `API_KEY=secret` in the child process).
+
+Example: to wrap `mcp-github`:
+```bash
+MCP_BACKEND_COMMAND=uvx
+MCP_BACKEND_ARGS=mcp-github
+MCP_BACKEND_ENV_GITHUB_TOKEN=ghp_...
 ```

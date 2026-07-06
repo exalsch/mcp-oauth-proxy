@@ -1,0 +1,4 @@
+# Caddy v2 — automatic HTTPS. Point DNS A/AAAA of mcp.example.tld at the VPS.
+mcp.example.tld {
+    reverse_proxy 127.0.0.1:8000
+}
