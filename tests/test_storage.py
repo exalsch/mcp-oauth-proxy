@@ -57,3 +57,22 @@ def test_persistence_across_instances(tmp_path):
     path = str(tmp_path / "p.db")
     Storage(path).upsert_client("c9", '{"k":9}')
     assert Storage(path).get_client("c9") == '{"k":9}'
+
+
+def test_expired_auth_code_not_returned(tmp_path):
+    s = make_storage(tmp_path)
+    s.save_auth_code("codeX", "clientA", "{}", time.time() - 1)
+    assert s.pop_auth_code("codeX") is None
+
+
+def test_singleton_created_once_and_reused(tmp_path):
+    s = make_storage(tmp_path)
+    calls = {"n": 0}
+
+    def factory():
+        calls["n"] += 1
+        return "val-1"
+
+    assert s.get_or_create_singleton("salt", factory) == "val-1"
+    assert s.get_or_create_singleton("salt", factory) == "val-1"
+    assert calls["n"] == 1  # factory only ran once; second call reused stored value

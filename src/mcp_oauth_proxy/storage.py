@@ -54,9 +54,8 @@ class Storage:
 
     def pop_txn(self, txn_id: str) -> str | None:
         row = self._conn.execute(
-            "SELECT data, expires_at FROM txns WHERE txn_id=?", (txn_id,)
+            "DELETE FROM txns WHERE txn_id=? RETURNING data, expires_at", (txn_id,)
         ).fetchone()
-        self._conn.execute("DELETE FROM txns WHERE txn_id=?", (txn_id,))
         self._conn.commit()
         if not row or row[1] < time.time():
             return None
@@ -72,9 +71,8 @@ class Storage:
 
     def pop_auth_code(self, code: str) -> tuple[str, str] | None:
         row = self._conn.execute(
-            "SELECT client_id, data, expires_at FROM auth_codes WHERE code=?", (code,)
+            "DELETE FROM auth_codes WHERE code=? RETURNING client_id, data, expires_at", (code,)
         ).fetchone()
-        self._conn.execute("DELETE FROM auth_codes WHERE code=?", (code,))
         self._conn.commit()
         if not row or row[2] < time.time():
             return None
@@ -124,6 +122,11 @@ class Storage:
         if row:
             return row[0]
         value = factory()
-        self._conn.execute("INSERT INTO singletons(key, value) VALUES(?, ?)", (key, value))
+        self._conn.execute(
+            "INSERT OR IGNORE INTO singletons(key, value) VALUES(?, ?)", (key, value)
+        )
         self._conn.commit()
-        return value
+        winner = self._conn.execute(
+            "SELECT value FROM singletons WHERE key=?", (key,)
+        ).fetchone()
+        return winner[0]
