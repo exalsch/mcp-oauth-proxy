@@ -14,13 +14,19 @@ def _forwarded_host_env() -> dict[str, str]:
 
 
 def _load_servers_file(path: str) -> dict[str, dict]:
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path}: invalid JSON ({exc})") from exc
     # Accept either the standard `{"mcpServers": {...}}` wrapper or a bare
     # mapping of server name -> spec.
     servers = data.get("mcpServers", data) if isinstance(data, dict) else None
     if not isinstance(servers, dict) or not servers:
         raise ValueError(f"{path}: expected a non-empty 'mcpServers' object")
+    for name, spec in servers.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"{path}: server '{name}' must be an object")
     return servers
 
 
@@ -53,8 +59,11 @@ def build_backend_config(settings: Settings) -> dict:
     for name, spec in raw_servers.items():
         entry = dict(spec)
         if "command" in entry:  # stdio server — we control its child env
+            configured_env = entry.get("env", {})
+            if not isinstance(configured_env, dict):
+                raise ValueError(f"server '{name}': 'env' must be an object")
             child_env = _forwarded_host_env()
-            child_env.update(entry.get("env", {}))
+            child_env.update(configured_env)
             entry["env"] = child_env
             entry.setdefault("args", [])
             entry.setdefault("keep_alive", True)

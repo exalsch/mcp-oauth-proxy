@@ -93,3 +93,23 @@ def test_servers_config_empty_raises(tmp_path):
         assert False, "expected ValueError for empty server map"
     except ValueError:
         pass
+
+
+def test_servers_config_invalid_json_raises_with_path(tmp_path):
+    servers_file = tmp_path / "servers.json"
+    servers_file.write_text("{ not valid json")
+    try:
+        build_backend_config(_settings(servers_config_path=str(servers_file)))
+        assert False, "expected ValueError for malformed JSON"
+    except ValueError as exc:
+        assert str(servers_file) in str(exc)
+
+
+def test_servers_config_non_object_entry_names_server(tmp_path):
+    servers_file = tmp_path / "servers.json"
+    servers_file.write_text(json.dumps({"mcpServers": {"bad": "not-an-object"}}))
+    try:
+        build_backend_config(_settings(servers_config_path=str(servers_file)))
+        assert False, "expected ValueError for non-object server entry"
+    except ValueError as exc:
+        assert "bad" in str(exc)

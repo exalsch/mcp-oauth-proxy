@@ -9,6 +9,12 @@ def _base_env():
     }
 
 
+def test_servers_config_path_defaults_none_and_reads_env():
+    assert load_settings(_base_env()).servers_config_path is None
+    env = _base_env() | {"MCP_SERVERS_CONFIG": "/data/servers.json"}
+    assert load_settings(env).servers_config_path == "/data/servers.json"
+
+
 def test_loads_required_and_defaults():
     s = load_settings(_base_env())
     assert isinstance(s, Settings)
