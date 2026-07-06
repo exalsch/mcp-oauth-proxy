@@ -160,15 +160,47 @@ class SecretOAuthProvider(OAuthProvider):
             code_challenge=data["code_challenge"],
         )
 
+    def _mint_tokens(self, client_id: str, scopes: list[str]) -> OAuthToken:
+        access = secrets.token_urlsafe(32)
+        refresh = secrets.token_urlsafe(32)
+        scope_str = " ".join(scopes)
+        now = time.time()
+        self._storage.save_access_token(
+            access, client_id, scope_str, now + self._settings.access_token_ttl
+        )
+        refresh_exp = now + self._settings.refresh_token_ttl if self._settings.refresh_token_ttl else None
+        self._storage.save_refresh_token(refresh, client_id, scope_str, refresh_exp)
+        return OAuthToken(
+            access_token=access,
+            token_type="Bearer",
+            expires_in=self._settings.access_token_ttl,
+            refresh_token=refresh,
+            scope=scope_str or None,
+        )
+
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
     ) -> OAuthToken:
-        raise NotImplementedError  # Task 8
+        return self._mint_tokens(client.client_id, list(authorization_code.scopes))
 
     async def load_refresh_token(
         self, client: OAuthClientInformationFull, refresh_token: str
     ) -> RefreshToken | None:
-        raise NotImplementedError  # Task 8
+        row = self._storage.get_refresh_token(refresh_token)
+        if row is None:
+            return None
+        client_id, scopes, expires_at = row
+        if client_id != client.client_id:
+            return None
+        if expires_at is not None and expires_at < time.time():
+            self._storage.delete_refresh_token(refresh_token)
+            return None
+        return RefreshToken(
+            token=refresh_token,
+            client_id=client_id,
+            scopes=scopes.split() if scopes else [],
+            expires_at=int(expires_at) if expires_at is not None else None,
+        )
 
     async def exchange_refresh_token(
         self,
@@ -176,7 +208,11 @@ class SecretOAuthProvider(OAuthProvider):
         refresh_token: RefreshToken,
         scopes: list[str],
     ) -> OAuthToken:
-        raise NotImplementedError  # Task 8
+        # rotate: invalidate the presented refresh token
+        self._storage.delete_refresh_token(refresh_token.token)
+        new_scopes = scopes if scopes else list(refresh_token.scopes)
+        return self._mint_tokens(client.client_id, new_scopes)
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
-        raise NotImplementedError  # Task 8
+        self._storage.delete_access_token(token.token)
+        self._storage.delete_refresh_token(token.token)
