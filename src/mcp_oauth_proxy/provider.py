@@ -9,13 +9,18 @@ from mcp.server.auth.provider import (
     AuthorizationCode,
     AuthorizationParams,
     RefreshToken,
+    construct_redirect_uri,
 )
 from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from fastmcp.server.auth.auth import OAuthProvider
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, RedirectResponse, Response
+from starlette.routing import Route
 
 from .config import Settings
-from .secret_gate import SecretGate
+from .login_ui import render_login_page
+from .secret_gate import LockedOut, SecretGate
 from .storage import Storage
 
 
@@ -83,10 +88,76 @@ class SecretOAuthProvider(OAuthProvider):
         self._storage.save_txn(txn_id, payload, time.time() + self._settings.auth_code_ttl)
         return self._login_url(txn_id)
 
+    def get_routes(self, mcp_path: str | None = None) -> list[Route]:
+        routes = super().get_routes(mcp_path)
+        routes.append(Route("/login", self._login_get, methods=["GET"]))
+        routes.append(Route("/login", self._login_post, methods=["POST"]))
+        return routes
+
+    async def _login_get(self, request: Request) -> HTMLResponse:
+        txn_id = request.query_params.get("txn", "")
+        return HTMLResponse(render_login_page(txn_id))
+
+    async def _login_post(self, request: Request) -> Response:
+        form = await request.form()
+        txn_id = str(form.get("txn", ""))
+        secret = str(form.get("secret", ""))
+        client_key = request.client.host if request.client else "unknown"
+
+        try:
+            ok = self._gate.verify(client_key, secret)
+        except LockedOut as exc:
+            return HTMLResponse(
+                render_login_page(txn_id, error=f"Too many attempts. Try again in {exc.retry_after}s."),
+                status_code=429,
+            )
+        if not ok:
+            return HTMLResponse(
+                render_login_page(txn_id, error="Incorrect secret."),
+                status_code=401,
+            )
+
+        payload_raw = self._storage.pop_txn(txn_id)
+        if payload_raw is None:
+            return HTMLResponse(
+                render_login_page(txn_id, error="Session expired. Restart the connection from Claude."),
+                status_code=400,
+            )
+        payload = json.loads(payload_raw)
+
+        code = secrets.token_urlsafe(32)
+        code_payload = {
+            "redirect_uri": payload["redirect_uri"],
+            "redirect_uri_provided_explicitly": payload["redirect_uri_provided_explicitly"],
+            "scopes": payload["scopes"],
+            "code_challenge": payload["code_challenge"],
+        }
+        self._storage.save_auth_code(
+            code, payload["client_id"], json.dumps(code_payload),
+            time.time() + self._settings.auth_code_ttl,
+        )
+        redirect = construct_redirect_uri(payload["redirect_uri"], code=code, state=payload["state"])
+        return RedirectResponse(url=redirect, status_code=302)
+
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
     ) -> AuthorizationCode | None:
-        raise NotImplementedError  # Task 7
+        row = self._storage.pop_auth_code(authorization_code)
+        if row is None:
+            return None
+        client_id, data_raw = row
+        if client_id != client.client_id:
+            return None
+        data = json.loads(data_raw)
+        return AuthorizationCode(
+            code=authorization_code,
+            client_id=client_id,
+            redirect_uri=data["redirect_uri"],
+            redirect_uri_provided_explicitly=data["redirect_uri_provided_explicitly"],
+            scopes=data["scopes"],
+            expires_at=time.time() + self._settings.auth_code_ttl,
+            code_challenge=data["code_challenge"],
+        )
 
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
