@@ -1,0 +1,20 @@
+# Runs on the HOME VM (where the vault is synced by Syncthing).
+# Headless Obsidian with the Local REST API plugin, reachable over Tailscale.
+services:
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ./config:/config
+      - /path/to/synced/vault:/config/vault   # Syncthing target
+    ports:
+      - "3000:3000"     # KasmVNC web UI to configure Obsidian once
+      - "27124:27124"   # Local REST API (HTTPS) — bind to tailnet in production
+    restart: unless-stopped
+    shm_size: "1gb"

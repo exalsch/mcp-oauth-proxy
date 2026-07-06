@@ -1,0 +1,12 @@
+services:
+  proxy:
+    build: .
+    env_file: .env
+    volumes:
+      - proxy-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"   # Caddy reverse-proxies to this
+    restart: unless-stopped
+
+volumes:
+  proxy-data:

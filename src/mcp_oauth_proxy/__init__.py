@@ -4,5 +4,5 @@ __all__ = ["main"]
 
 
 def main() -> None:
-    """Entry point (implemented during the build-out phase)."""
-    raise NotImplementedError("mcp-oauth-proxy is scaffolding; see docs/superpowers/specs/")
+    from .app import run
+    run()
