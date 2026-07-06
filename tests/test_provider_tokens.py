@@ -85,3 +85,21 @@ async def test_revoke_refresh_token(tmp_path):
     rt_obj = await provider.load_refresh_token(_client(), token.refresh_token)
     await provider.revoke_token(rt_obj)
     assert await provider.load_refresh_token(_client(), token.refresh_token) is None
+
+
+async def test_load_refresh_token_expired_returns_none_and_is_cleaned_up(tmp_path):
+    provider, storage = make(tmp_path)
+    token = await provider.exchange_authorization_code(_client(), _authcode(["read"]))
+    # overwrite with an already-past expiry
+    storage.save_refresh_token(token.refresh_token, "c1", "", time.time() - 1)
+    assert await provider.load_refresh_token(_client(), token.refresh_token) is None
+    assert storage.get_refresh_token(token.refresh_token) is None
+
+
+async def test_load_refresh_token_wrong_client_returns_none(tmp_path):
+    provider, storage = make(tmp_path)
+    token = await provider.exchange_authorization_code(_client(), _authcode(["read"]))
+    other_client = OAuthClientInformationFull(
+        client_id="other", redirect_uris=[AnyUrl("https://claude.ai/cb")],
+        token_endpoint_auth_method="none")
+    assert await provider.load_refresh_token(other_client, token.refresh_token) is None

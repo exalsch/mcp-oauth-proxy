@@ -50,3 +50,14 @@ async def test_load_access_token_returns_and_expires(tmp_path):
     storage.save_access_token("at2", "c1", "", time.time() - 1)
     assert await provider.load_access_token("at2") is None
     assert storage.get_access_token("at2") is None
+
+
+async def test_register_client_without_client_id_raises(tmp_path):
+    provider, _ = make_provider(tmp_path)
+    client_info = OAuthClientInformationFull(
+        client_id=None,
+        redirect_uris=[AnyUrl("https://claude.ai/api/mcp/auth_callback")],
+        token_endpoint_auth_method="none",
+    )
+    with pytest.raises(ValueError):
+        await provider.register_client(client_info)

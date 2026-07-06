@@ -102,3 +102,23 @@ async def test_load_authorization_code_roundtrip(tmp_path):
     assert str(ac.redirect_uri) == "https://claude.ai/cb"
     # single use
     assert await provider.load_authorization_code(client_info, code) is None
+
+
+async def test_login_post_missing_txn_returns_400(tmp_path):
+    provider, storage, client = make(tmp_path)
+    # never seeded / already-consumed txn id
+    resp = await client.post("/login", data={"txn": "bogus-txn-id", "secret": "s3cret"})
+    assert resp.status_code == 400
+    assert "Session expired" in resp.text
+
+
+async def test_load_authorization_code_wrong_client_returns_none(tmp_path):
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    resp = await client.post("/login", data={"txn": txn, "secret": "s3cret"},
+                             follow_redirects=False)
+    code = parse_qs(urlparse(resp.headers["location"]).query)["code"][0]
+    other_client = OAuthClientInformationFull(
+        client_id="other", redirect_uris=[AnyUrl("https://claude.ai/cb")],
+        token_endpoint_auth_method="none")
+    assert await provider.load_authorization_code(other_client, code) is None
