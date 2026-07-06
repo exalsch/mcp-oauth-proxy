@@ -61,3 +61,27 @@ async def test_revoke_access_token(tmp_path):
     at = await provider.verify_token(token.access_token)
     await provider.revoke_token(at)
     assert await provider.verify_token(token.access_token) is None
+
+
+async def test_refresh_narrows_scopes(tmp_path):
+    provider, storage = make(tmp_path)
+    first = await provider.exchange_authorization_code(_client(), _authcode(["read", "write"]))
+    rt_obj = await provider.load_refresh_token(_client(), first.refresh_token)
+    narrowed = await provider.exchange_refresh_token(_client(), rt_obj, ["read"])
+    assert narrowed.scope == "read"
+
+
+async def test_refresh_blocks_scope_elevation(tmp_path):
+    provider, storage = make(tmp_path)
+    first = await provider.exchange_authorization_code(_client(), _authcode(["read"]))
+    rt_obj = await provider.load_refresh_token(_client(), first.refresh_token)
+    elevated = await provider.exchange_refresh_token(_client(), rt_obj, ["read", "admin"])
+    assert elevated.scope == "read"  # "admin" dropped, not elevated
+
+
+async def test_revoke_refresh_token(tmp_path):
+    provider, storage = make(tmp_path)
+    token = await provider.exchange_authorization_code(_client(), _authcode(["read"]))
+    rt_obj = await provider.load_refresh_token(_client(), token.refresh_token)
+    await provider.revoke_token(rt_obj)
+    assert await provider.load_refresh_token(_client(), token.refresh_token) is None

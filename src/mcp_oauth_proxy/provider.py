@@ -210,7 +210,11 @@ class SecretOAuthProvider(OAuthProvider):
     ) -> OAuthToken:
         # rotate: invalidate the presented refresh token
         self._storage.delete_refresh_token(refresh_token.token)
-        new_scopes = scopes if scopes else list(refresh_token.scopes)
+        # Clamp to originally-granted scopes: narrowing allowed, elevation dropped (RFC 6749 §6)
+        if scopes:
+            new_scopes = [s for s in scopes if s in refresh_token.scopes]
+        else:
+            new_scopes = list(refresh_token.scopes)
         return self._mint_tokens(client.client_id, new_scopes)
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
