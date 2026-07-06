@@ -778,7 +778,6 @@ source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },
     { name = "fastmcp" },
-    { name = "pyjwt" },
     { name = "python-dotenv" },
 ]
 
@@ -794,7 +793,6 @@ dev = [
 requires-dist = [
     { name = "argon2-cffi", specifier = ">=23.1.0" },
     { name = "fastmcp", specifier = ">=3.4,<4" },
-    { name = "pyjwt", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
 ]
 

@@ -122,3 +122,20 @@ async def test_load_authorization_code_wrong_client_returns_none(tmp_path):
         client_id="other", redirect_uris=[AnyUrl("https://claude.ai/cb")],
         token_endpoint_auth_method="none")
     assert await provider.load_authorization_code(other_client, code) is None
+
+
+async def test_lockout_is_per_forwarded_client(tmp_path):
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    # exhaust attempts for one forwarded client IP
+    for _ in range(3):
+        await client.post("/login", data={"txn": txn, "secret": "wrong"},
+                          headers={"X-Forwarded-For": "1.2.3.4"})
+    # that forwarded IP is now locked out
+    locked = await client.post("/login", data={"txn": txn, "secret": "wrong"},
+                               headers={"X-Forwarded-For": "1.2.3.4"})
+    assert locked.status_code == 429
+    # a DIFFERENT forwarded IP is NOT globally locked (independent bucket)
+    other = await client.post("/login", data={"txn": txn, "secret": "wrong"},
+                              headers={"X-Forwarded-For": "5.6.7.8"})
+    assert other.status_code == 401

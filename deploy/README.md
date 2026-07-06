@@ -52,3 +52,7 @@ URL you paste into claude.ai must include the `/mcp` transport path.) Traffic pa
 - **`vault unreachable` tool errors:** home VM/Obsidian down or Tailscale offline.
 - **Re-login after redeploy:** ensure the `proxy-data` volume is mounted (SQLite
   persistence). Losing it drops registered clients + tokens.
+- **Login lockout after failed attempts:** the `/login` page locks a client for
+  ~5 min after 5 wrong secrets. The lockout keys on the client IP from
+  `X-Forwarded-For`, so ensure Caddy forwards it (it does by default). Adjust with
+  `MCP_PROXY_LOGIN_MAX_ATTEMPTS` / `MCP_PROXY_LOGIN_LOCKOUT_SECONDS`.

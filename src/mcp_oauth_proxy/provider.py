@@ -94,6 +94,19 @@ class SecretOAuthProvider(OAuthProvider):
         routes.append(Route("/login", self._login_post, methods=["POST"]))
         return routes
 
+    @staticmethod
+    def _client_key(request: Request) -> str:
+        # Behind a reverse proxy (Caddy), the TCP peer is the proxy itself, so
+        # the raw peer address would bucket ALL users together and let any
+        # visitor lock out the operator. Prefer the left-most X-Forwarded-For
+        # entry (the original client, set by Caddy); fall back to the peer.
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            first = forwarded.split(",")[0].strip()
+            if first:
+                return first
+        return request.client.host if request.client else "unknown"
+
     async def _login_get(self, request: Request) -> HTMLResponse:
         txn_id = request.query_params.get("txn", "")
         return HTMLResponse(render_login_page(txn_id))
@@ -102,7 +115,7 @@ class SecretOAuthProvider(OAuthProvider):
         form = await request.form()
         txn_id = str(form.get("txn", ""))
         secret = str(form.get("secret", ""))
-        client_key = request.client.host if request.client else "unknown"
+        client_key = self._client_key(request)
 
         try:
             ok = self._gate.verify(client_key, secret)

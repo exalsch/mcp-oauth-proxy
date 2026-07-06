@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
