@@ -30,3 +30,4 @@ asyncio_mode = "auto"
 
 [project.scripts]
 mcp-oauth-proxy = "mcp_oauth_proxy:main"
+mcp-oauth-proxy-hash = "mcp_oauth_proxy.hash_cli:hash_cli_main"
