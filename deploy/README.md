@@ -43,6 +43,24 @@ URL you paste into claude.ai must include the `/mcp` transport path.) Traffic pa
 3. Claude opens the login page — enter your access secret once.
 4. Tools appear. Works on web, desktop, and mobile with the same login.
 
+## Multiple backends (optional)
+
+To serve more than one MCP server behind this single connector:
+
+1. Copy `servers.example.json` to `servers.json`, listing each server under
+   `mcpServers` with its `command`/`args`/`env` (for Obsidian, the same
+   `OBSIDIAN_*` values you'd otherwise put in `.env`).
+2. Mount it and point the proxy at it — in `docker-compose.yml`:
+   ```yaml
+   volumes:
+     - proxy-data:/data
+     - ./servers.json:/data/servers.json:ro
+   ```
+   and in `.env`: `MCP_SERVERS_CONFIG=/data/servers.json`.
+3. `docker compose up -d`. With more than one server, tools appear namespaced by
+   server key (`obsidian_...`, `github_...`); a single-server file stays
+   unprefixed. `MCP_SERVERS_CONFIG` overrides the single `MCP_BACKEND_*` vars.
+
 ## Troubleshooting
 
 - **401 loop:** clock skew or `MCP_PROXY_PUBLIC_URL` mismatch with the real host.

@@ -4,6 +4,9 @@ services:
     env_file: .env
     volumes:
       - proxy-data:/data
+      # For multiple backends, mount a servers config and set
+      # MCP_SERVERS_CONFIG=/data/servers.json in .env:
+      # - ./servers.json:/data/servers.json:ro
     ports:
       - "127.0.0.1:8000:8000"   # Caddy reverse-proxies to this
     restart: unless-stopped

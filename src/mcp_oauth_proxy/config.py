@@ -18,6 +18,7 @@ class Settings:
     backend_command: str = "uvx"
     backend_args: list[str] = field(default_factory=lambda: ["mcp-obsidian"])
     backend_env: dict[str, str] = field(default_factory=dict)
+    servers_config_path: str | None = None
     access_token_ttl: int = 3600
     refresh_token_ttl: int = 2592000
     auth_code_ttl: int = 300
@@ -56,6 +57,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         backend_command=environ.get("MCP_BACKEND_COMMAND", "uvx"),
         backend_args=backend_args,
         backend_env=backend_env,
+        servers_config_path=environ.get("MCP_SERVERS_CONFIG"),
         access_token_ttl=int(environ.get("MCP_PROXY_ACCESS_TOKEN_TTL", "3600")),
         refresh_token_ttl=int(environ.get("MCP_PROXY_REFRESH_TOKEN_TTL", "2592000")),
         auth_code_ttl=int(environ.get("MCP_PROXY_AUTH_CODE_TTL", "300")),

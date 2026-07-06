@@ -5,7 +5,7 @@ import logging
 from fastmcp.server import create_proxy
 from fastmcp.server.providers.proxy import FastMCPProxy
 
-from .backend import build_backend_transport
+from .backend import build_backend_config
 from .config import Settings, load_settings
 from .provider import SecretOAuthProvider
 from .secret_gate import SecretGate
@@ -22,9 +22,9 @@ def build_app(settings: Settings) -> FastMCPProxy:
         lockout_seconds=settings.login_lockout_seconds,
     )
     provider = SecretOAuthProvider(settings, storage, gate)
-    transport = build_backend_transport(settings)
+    backend = build_backend_config(settings)
     proxy = create_proxy(
-        transport,
+        backend,
         name="mcp-oauth-proxy",
         auth=provider,
     )
