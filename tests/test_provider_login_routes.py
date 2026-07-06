@@ -96,6 +96,9 @@ async def test_load_authorization_code_roundtrip(tmp_path):
     assert ac is not None
     assert ac.code == code
     assert ac.code_challenge == "chal"
+    # expiry is the real issuance expiry (not recomputed at read time), in the future and within ttl
+    assert ac.expires_at is not None
+    assert ac.expires_at <= time.time() + 300
     assert str(ac.redirect_uri) == "https://claude.ai/cb"
     # single use
     assert await provider.load_authorization_code(client_info, code) is None

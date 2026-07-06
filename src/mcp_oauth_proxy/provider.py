@@ -126,15 +126,16 @@ class SecretOAuthProvider(OAuthProvider):
         payload = json.loads(payload_raw)
 
         code = secrets.token_urlsafe(32)
+        expires_at = time.time() + self._settings.auth_code_ttl
         code_payload = {
             "redirect_uri": payload["redirect_uri"],
             "redirect_uri_provided_explicitly": payload["redirect_uri_provided_explicitly"],
             "scopes": payload["scopes"],
             "code_challenge": payload["code_challenge"],
+            "expires_at": expires_at,
         }
         self._storage.save_auth_code(
-            code, payload["client_id"], json.dumps(code_payload),
-            time.time() + self._settings.auth_code_ttl,
+            code, payload["client_id"], json.dumps(code_payload), expires_at
         )
         redirect = construct_redirect_uri(payload["redirect_uri"], code=code, state=payload["state"])
         return RedirectResponse(url=redirect, status_code=302)
@@ -155,7 +156,7 @@ class SecretOAuthProvider(OAuthProvider):
             redirect_uri=data["redirect_uri"],
             redirect_uri_provided_explicitly=data["redirect_uri_provided_explicitly"],
             scopes=data["scopes"],
-            expires_at=time.time() + self._settings.auth_code_ttl,
+            expires_at=data["expires_at"],
             code_challenge=data["code_challenge"],
         )
 
