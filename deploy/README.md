@@ -1,7 +1,9 @@
 # Deploying mcp-oauth-proxy
 
-End state: `https://mcp.example.tld` is a claude.ai custom connector that reaches
-your Obsidian vault. Traffic path:
+End state: `https://mcp.example.tld/mcp` is a claude.ai custom connector that reaches
+your Obsidian vault. (The bare origin `https://mcp.example.tld` is the OAuth base —
+`MCP_PROXY_PUBLIC_URL` and the `/.well-known/` metadata live there — but the connector
+URL you paste into claude.ai must include the `/mcp` transport path.) Traffic path:
 
     claude.ai → Caddy (TLS) → proxy container (:8000) → uvx mcp-obsidian
               → Tailscale → home VM Obsidian Local REST API (:27124)
@@ -30,13 +32,14 @@ your Obsidian vault. Traffic path:
 
 - `curl https://mcp.example.tld/.well-known/oauth-authorization-server` returns JSON
   with `authorization_endpoint`, `token_endpoint`, `registration_endpoint`.
-- Run MCP Inspector against `https://mcp.example.tld/mcp/`; complete the OAuth login
+- Run MCP Inspector against `https://mcp.example.tld/mcp`; complete the OAuth login
   (enter your access secret) and confirm the `obsidian_*` tools list.
 
 ## 4. Connect the custom connector in claude.ai
 
 1. claude.ai → Settings → Connectors → Add custom connector.
-2. URL: `https://mcp.example.tld` (or `.../mcp/` if Inspector needed the suffix).
+2. URL: `https://mcp.example.tld/mcp` — the `/mcp` transport path is required; the
+   bare origin returns 404 and will not connect.
 3. Claude opens the login page — enter your access secret once.
 4. Tools appear. Works on web, desktop, and mobile with the same login.
 
