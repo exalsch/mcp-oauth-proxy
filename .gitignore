@@ -25,3 +25,6 @@ data/
 .idea/
 .vscode/
 .superpowers/
+
+# Internal design docs (not published)
+docs/superpowers/
