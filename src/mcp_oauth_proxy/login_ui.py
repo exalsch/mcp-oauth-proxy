@@ -24,7 +24,7 @@ _PAGE = """<!doctype html>
 </head>
 <body>
   <div class="card">
-    <h1>Connect to your vault</h1>
+    <h1>Enter your access secret</h1>
     {error_block}
     <form method="post" action="login">
       <input type="hidden" name="txn" value="{txn}">
