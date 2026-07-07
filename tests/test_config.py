@@ -49,6 +49,14 @@ def test_backend_command_and_args_override():
     assert s.backend_args == ["-m", "my.server", "--flag"]
 
 
+def test_trusted_proxies_default_and_override():
+    assert load_settings(_base_env()).trusted_proxies == 1
+    env = _base_env() | {"MCP_PROXY_TRUSTED_PROXIES": "2"}
+    assert load_settings(env).trusted_proxies == 2
+    env0 = _base_env() | {"MCP_PROXY_TRUSTED_PROXIES": "0"}
+    assert load_settings(env0).trusted_proxies == 0
+
+
 def test_missing_required_raises():
     with pytest.raises(ValueError, match="MCP_PROXY_PUBLIC_URL"):
         load_settings({"MCP_PROXY_ACCESS_SECRET_HASH": "x"})

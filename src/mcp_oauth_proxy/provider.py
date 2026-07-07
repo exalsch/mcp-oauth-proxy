@@ -94,22 +94,48 @@ class SecretOAuthProvider(OAuthProvider):
         routes.append(Route("/login", self._login_post, methods=["POST"]))
         return routes
 
-    @staticmethod
-    def _client_key(request: Request) -> str:
-        # Behind a reverse proxy (Caddy), the TCP peer is the proxy itself, so
-        # the raw peer address would bucket ALL users together and let any
-        # visitor lock out the operator. Prefer the left-most X-Forwarded-For
-        # entry (the original client, set by Caddy); fall back to the peer.
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            first = forwarded.split(",")[0].strip()
-            if first:
-                return first
+    def _client_key(self, request: Request) -> str:
+        # The rate-limit bucket key MUST be an address the client cannot forge,
+        # otherwise the login brute-force lockout is trivially bypassed by
+        # rotating a spoofed header. A reverse proxy appends the real peer to the
+        # RIGHT of X-Forwarded-For, so with N trusted proxies in front the
+        # client's address is the Nth entry from the right; everything further
+        # left is attacker-supplied. With no trusted proxy, use the TCP peer.
+        hops = self._settings.trusted_proxies
+        if hops > 0:
+            forwarded = request.headers.get("x-forwarded-for", "")
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                return parts[-min(hops, len(parts))]
         return request.client.host if request.client else "unknown"
+
+    async def _consent_info(self, txn_id: str) -> dict | None:
+        # Surface who is being authorized and where the resulting code will be
+        # sent, so the operator can refuse a request they did not start. Without
+        # this, an attacker who registers their own client + redirect_uri (open
+        # DCR) and phishes the login page can have the operator hand them a code.
+        if not txn_id:
+            return None
+        raw = self._storage.get_txn(txn_id)
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            return None
+        client_id = payload.get("client_id", "")
+        client = await self.get_client(client_id) if client_id else None
+        client_name = (getattr(client, "client_name", None) or "") if client else ""
+        return {
+            "client_id": client_id,
+            "client_name": client_name,
+            "redirect_uri": payload.get("redirect_uri", ""),
+        }
 
     async def _login_get(self, request: Request) -> HTMLResponse:
         txn_id = request.query_params.get("txn", "")
-        return HTMLResponse(render_login_page(txn_id))
+        consent = await self._consent_info(txn_id)
+        return HTMLResponse(render_login_page(txn_id, consent=consent))
 
     async def _login_post(self, request: Request) -> Response:
         form = await request.form()

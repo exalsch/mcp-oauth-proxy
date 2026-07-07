@@ -24,6 +24,12 @@ class Settings:
     auth_code_ttl: int = 300
     login_max_attempts: int = 5
     login_lockout_seconds: int = 300
+    # Number of trusted reverse proxies in front of the app. The real client IP
+    # (used to key the login rate limiter) is taken this many entries from the
+    # right of X-Forwarded-For — entries further left are client-supplied and
+    # untrusted. Default 1 (a single Caddy/nginx hop). Set 0 if the app is
+    # exposed directly with no proxy.
+    trusted_proxies: int = 1
 
 
 def _require(environ: Mapping[str, str], key: str) -> str:
@@ -63,4 +69,5 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         auth_code_ttl=int(environ.get("MCP_PROXY_AUTH_CODE_TTL", "300")),
         login_max_attempts=int(environ.get("MCP_PROXY_LOGIN_MAX_ATTEMPTS", "5")),
         login_lockout_seconds=int(environ.get("MCP_PROXY_LOGIN_LOCKOUT_SECONDS", "300")),
+        trusted_proxies=int(environ.get("MCP_PROXY_TRUSTED_PROXIES", "1")),
     )
