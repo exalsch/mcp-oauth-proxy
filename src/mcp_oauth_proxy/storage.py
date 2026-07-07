@@ -4,7 +4,6 @@ import hashlib
 import os
 import sqlite3
 import time
-from collections.abc import Callable
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS clients (client_id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -12,7 +11,6 @@ CREATE TABLE IF NOT EXISTS txns (txn_id TEXT PRIMARY KEY, data TEXT NOT NULL, ex
 CREATE TABLE IF NOT EXISTS auth_codes (code TEXT PRIMARY KEY, client_id TEXT NOT NULL, data TEXT NOT NULL, expires_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS access_tokens (token TEXT PRIMARY KEY, client_id TEXT NOT NULL, scopes TEXT NOT NULL, expires_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS refresh_tokens (token TEXT PRIMARY KEY, client_id TEXT NOT NULL, scopes TEXT NOT NULL, expires_at REAL);
-CREATE TABLE IF NOT EXISTS singletons (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 # Writes trigger an opportunistic sweep of expired rows at most this often, so
@@ -169,20 +167,3 @@ class Storage:
     def delete_refresh_token(self, token: str) -> None:
         self._conn.execute("DELETE FROM refresh_tokens WHERE token=?", (_hash(token),))
         self._conn.commit()
-
-    # singletons (e.g. persistent salt)
-    def get_or_create_singleton(self, key: str, factory: Callable[[], str]) -> str:
-        row = self._conn.execute(
-            "SELECT value FROM singletons WHERE key=?", (key,)
-        ).fetchone()
-        if row:
-            return row[0]
-        value = factory()
-        self._conn.execute(
-            "INSERT OR IGNORE INTO singletons(key, value) VALUES(?, ?)", (key, value)
-        )
-        self._conn.commit()
-        winner = self._conn.execute(
-            "SELECT value FROM singletons WHERE key=?", (key,)
-        ).fetchone()
-        return winner[0]

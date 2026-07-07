@@ -174,3 +174,17 @@ async def test_login_get_consent_peek_does_not_consume_txn(tmp_path):
     resp = await client.post("/login", data={"txn": txn, "secret": "s3cret"},
                              follow_redirects=False)
     assert resp.status_code in (302, 303, 307)
+
+
+async def test_login_responses_carry_security_headers(tmp_path):
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    get = await client.get(f"/login?txn={txn}")
+    assert get.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in get.headers["content-security-policy"]
+    assert get.headers["x-content-type-options"] == "nosniff"
+    assert get.headers["cache-control"] == "no-store"
+    # error responses are guarded too
+    bad = await client.post("/login", data={"txn": txn, "secret": "wrong"})
+    assert bad.status_code == 401
+    assert bad.headers["x-frame-options"] == "DENY"

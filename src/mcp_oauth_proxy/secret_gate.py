@@ -28,6 +28,15 @@ class _Bucket:
 
 
 class SecretGate:
+    """Rate-limits access-secret verification with a per-client-key lockout.
+
+    Lockout state is intentionally in-memory and per-process: it is not shared
+    across replicas and resets on restart. This is acceptable for the intended
+    single-process deployment - an attacker cannot force a restart, and argon2's
+    cost bounds attempt throughput regardless. If you ever run multiple replicas
+    or need lockouts to survive restarts, back this with the SQLite store.
+    """
+
     def __init__(
         self,
         secret_hash: str,

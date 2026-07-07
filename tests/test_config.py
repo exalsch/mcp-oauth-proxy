@@ -33,6 +33,17 @@ def test_public_url_trailing_slash_stripped():
     assert load_settings(env).public_url == "https://mcp.example.tld"
 
 
+def test_public_url_must_be_https_or_loopback():
+    # https is accepted
+    assert load_settings(_base_env()).public_url == "https://mcp.example.tld"
+    # http is accepted only for loopback (local dev / MCP Inspector)
+    for host in ("http://localhost", "http://127.0.0.1:8000", "http://localhost/"):
+        load_settings(_base_env() | {"MCP_PROXY_PUBLIC_URL": host})  # no raise
+    # http on a public host is rejected
+    with pytest.raises(ValueError, match="https"):
+        load_settings(_base_env() | {"MCP_PROXY_PUBLIC_URL": "http://mcp.example.tld"})
+
+
 def test_backend_env_passthrough_prefix():
     env = _base_env() | {
         "MCP_BACKEND_ENV_OBSIDIAN_API_KEY": "k123",

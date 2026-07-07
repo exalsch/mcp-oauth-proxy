@@ -121,16 +121,3 @@ def test_get_txn_expired_returns_none(tmp_path):
     s = make_storage(tmp_path)
     s.save_txn("t2", "{}", time.time() - 1)
     assert s.get_txn("t2") is None
-
-
-def test_singleton_created_once_and_reused(tmp_path):
-    s = make_storage(tmp_path)
-    calls = {"n": 0}
-
-    def factory():
-        calls["n"] += 1
-        return "val-1"
-
-    assert s.get_or_create_singleton("salt", factory) == "val-1"
-    assert s.get_or_create_singleton("salt", factory) == "val-1"
-    assert calls["n"] == 1  # factory only ran once; second call reused stored value
