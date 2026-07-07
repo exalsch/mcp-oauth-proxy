@@ -139,3 +139,52 @@ async def test_lockout_is_per_forwarded_client(tmp_path):
     other = await client.post("/login", data={"txn": txn, "secret": "wrong"},
                               headers={"X-Forwarded-For": "5.6.7.8"})
     assert other.status_code == 401
+
+
+async def test_spoofed_left_xff_does_not_bypass_lockout(tmp_path):
+    # With one trusted proxy (default), the real client is the RIGHT-most XFF
+    # entry the proxy appended. An attacker rotating the spoofable left entry
+    # must NOT get a fresh rate-limit bucket each request.
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    for i in range(3):
+        await client.post("/login", data={"txn": txn, "secret": "wrong"},
+                          headers={"X-Forwarded-For": f"9.9.9.{i}, 1.2.3.4"})
+    locked = await client.post("/login", data={"txn": txn, "secret": "wrong"},
+                               headers={"X-Forwarded-For": "9.9.9.250, 1.2.3.4"})
+    assert locked.status_code == 429   # keyed on the real 1.2.3.4, still locked
+
+
+async def test_login_get_shows_consent_destination(tmp_path):
+    # The operator must be able to see who is being authorized and where the
+    # code will be sent, to refuse an attacker-initiated (phished) transaction.
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    resp = await client.get(f"/login?txn={txn}")
+    assert resp.status_code == 200
+    assert "https://claude.ai/cb" in resp.text
+    assert "redirected to" in resp.text.lower()
+
+
+async def test_login_get_consent_peek_does_not_consume_txn(tmp_path):
+    # Rendering the consent panel peeks the txn; it must remain usable for POST.
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    await client.get(f"/login?txn={txn}")
+    resp = await client.post("/login", data={"txn": txn, "secret": "s3cret"},
+                             follow_redirects=False)
+    assert resp.status_code in (302, 303, 307)
+
+
+async def test_login_responses_carry_security_headers(tmp_path):
+    provider, storage, client = make(tmp_path)
+    txn = await _seed_txn(provider, storage)
+    get = await client.get(f"/login?txn={txn}")
+    assert get.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in get.headers["content-security-policy"]
+    assert get.headers["x-content-type-options"] == "nosniff"
+    assert get.headers["cache-control"] == "no-store"
+    # error responses are guarded too
+    bad = await client.post("/login", data={"txn": txn, "secret": "wrong"})
+    assert bad.status_code == 401
+    assert bad.headers["x-frame-options"] == "DENY"

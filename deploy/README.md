@@ -116,6 +116,10 @@ To serve more than one MCP server behind this single connector:
 - **Re-login after redeploy:** ensure the `proxy-data` volume is mounted (SQLite
   persistence). Losing it drops registered clients + tokens.
 - **Login lockout after failed attempts:** the `/login` page locks a client for
-  ~5 min after 5 wrong secrets. The lockout keys on the client IP from
-  `X-Forwarded-For`, so ensure Caddy forwards it (it does by default). Adjust with
-  `MCP_PROXY_LOGIN_MAX_ATTEMPTS` / `MCP_PROXY_LOGIN_LOCKOUT_SECONDS`.
+  ~5 min after 5 wrong secrets. The lockout keys on the client IP taken from the
+  right-hand end of `X-Forwarded-For` (the entry your trusted proxy appends), so
+  a client-spoofed header cannot bypass it. This assumes exactly one proxy hop
+  (Caddy); if you front the app with a different number of trusted proxies, set
+  `MCP_PROXY_TRUSTED_PROXIES` to match, or `0` if there is no proxy at all.
+  Adjust the thresholds with `MCP_PROXY_LOGIN_MAX_ATTEMPTS` /
+  `MCP_PROXY_LOGIN_LOCKOUT_SECONDS`.

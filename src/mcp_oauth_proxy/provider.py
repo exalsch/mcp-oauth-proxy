@@ -23,6 +23,21 @@ from .login_ui import render_login_page
 from .secret_gate import LockedOut, SecretGate
 from .storage import Storage
 
+# Sent on every login response. The page is fully self-contained (one inline
+# <style>, no scripts), so the CSP can be very tight; frame-ancestors 'none'
+# (plus X-Frame-Options) stops the secret-entry form being clickjacked, and
+# no-store keeps the txn/credential page out of caches.
+_SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
+        "frame-ancestors 'none'; base-uri 'none'"
+    ),
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+}
+
 
 class SecretOAuthProvider(OAuthProvider):
     def __init__(self, settings: Settings, storage: Storage, gate: SecretGate) -> None:
@@ -73,6 +88,12 @@ class SecretOAuthProvider(OAuthProvider):
         return f"{self._settings.public_url}/login?txn={txn_id}"
 
     def _txn_payload(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> dict:
+        # Note: the RFC 8707 `resource` (audience) indicator is intentionally not
+        # carried or enforced. This proxy presents as a single MCP resource, so
+        # every token it issues is for itself; audience binding would add no
+        # security separation here and risks interop friction with how clients
+        # send resource indicators. Revisit if this ever fronts distinct
+        # resources that must be isolated from one another.
         return {
             "client_id": client.client_id,
             "redirect_uri": str(params.redirect_uri),
@@ -94,22 +115,62 @@ class SecretOAuthProvider(OAuthProvider):
         routes.append(Route("/login", self._login_post, methods=["POST"]))
         return routes
 
-    @staticmethod
-    def _client_key(request: Request) -> str:
-        # Behind a reverse proxy (Caddy), the TCP peer is the proxy itself, so
-        # the raw peer address would bucket ALL users together and let any
-        # visitor lock out the operator. Prefer the left-most X-Forwarded-For
-        # entry (the original client, set by Caddy); fall back to the peer.
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            first = forwarded.split(",")[0].strip()
-            if first:
-                return first
+    def _client_key(self, request: Request) -> str:
+        # The rate-limit bucket key MUST be an address the client cannot forge,
+        # otherwise the login brute-force lockout is trivially bypassed by
+        # rotating a spoofed header. A reverse proxy appends the real peer to the
+        # RIGHT of X-Forwarded-For, so with N trusted proxies in front the
+        # client's address is the Nth entry from the right; everything further
+        # left is attacker-supplied. With no trusted proxy, use the TCP peer.
+        hops = self._settings.trusted_proxies
+        if hops > 0:
+            forwarded = request.headers.get("x-forwarded-for", "")
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                return parts[-min(hops, len(parts))]
         return request.client.host if request.client else "unknown"
+
+    async def _consent_info(self, txn_id: str) -> dict | None:
+        # Surface who is being authorized and where the resulting code will be
+        # sent, so the operator can refuse a request they did not start. Without
+        # this, an attacker who registers their own client + redirect_uri (open
+        # DCR) and phishes the login page can have the operator hand them a code.
+        if not txn_id:
+            return None
+        raw = self._storage.get_txn(txn_id)
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            return None
+        client_id = payload.get("client_id", "")
+        client = await self.get_client(client_id) if client_id else None
+        client_name = (getattr(client, "client_name", None) or "") if client else ""
+        return {
+            "client_id": client_id,
+            "client_name": client_name,
+            "redirect_uri": payload.get("redirect_uri", ""),
+        }
+
+    def _login_response(
+        self,
+        txn_id: str,
+        *,
+        error: str | None = None,
+        consent: dict | None = None,
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        return HTMLResponse(
+            render_login_page(txn_id, error=error, consent=consent),
+            status_code=status_code,
+            headers=dict(_SECURITY_HEADERS),
+        )
 
     async def _login_get(self, request: Request) -> HTMLResponse:
         txn_id = request.query_params.get("txn", "")
-        return HTMLResponse(render_login_page(txn_id))
+        consent = await self._consent_info(txn_id)
+        return self._login_response(txn_id, consent=consent)
 
     async def _login_post(self, request: Request) -> Response:
         form = await request.form()
@@ -120,20 +181,19 @@ class SecretOAuthProvider(OAuthProvider):
         try:
             ok = self._gate.verify(client_key, secret)
         except LockedOut as exc:
-            return HTMLResponse(
-                render_login_page(txn_id, error=f"Too many attempts. Try again in {exc.retry_after}s."),
+            return self._login_response(
+                txn_id,
+                error=f"Too many attempts. Try again in {exc.retry_after}s.",
                 status_code=429,
             )
         if not ok:
-            return HTMLResponse(
-                render_login_page(txn_id, error="Incorrect secret."),
-                status_code=401,
-            )
+            return self._login_response(txn_id, error="Incorrect secret.", status_code=401)
 
         payload_raw = self._storage.pop_txn(txn_id)
         if payload_raw is None:
-            return HTMLResponse(
-                render_login_page(txn_id, error="Session expired. Restart the connection from Claude."),
+            return self._login_response(
+                txn_id,
+                error="Session expired. Restart the connection from Claude.",
                 status_code=400,
             )
         payload = json.loads(payload_raw)
@@ -151,7 +211,11 @@ class SecretOAuthProvider(OAuthProvider):
             code, payload["client_id"], json.dumps(code_payload), expires_at
         )
         redirect = construct_redirect_uri(payload["redirect_uri"], code=code, state=payload["state"])
-        return RedirectResponse(url=redirect, status_code=302)
+        return RedirectResponse(
+            url=redirect,
+            status_code=302,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str

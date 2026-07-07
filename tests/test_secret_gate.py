@@ -55,3 +55,36 @@ def test_success_resets_counter():
     assert gate.verify("ip1", "hunter2") is True
     # counter reset: one more wrong should not lock
     assert gate.verify("ip1", "wrong") is False
+
+
+def test_bucket_count_is_bounded():
+    # A hostile client can present many distinct keys; the bucket dict must not
+    # grow without bound (memory-exhaustion vector).
+    t = {"v": 0.0}
+    gate = SecretGate(
+        secret_hash=hash_secret("hunter2"),
+        max_attempts=3, lockout_seconds=60,
+        now=lambda: t["v"], max_buckets=10,
+    )
+    for i in range(200):
+        t["v"] = float(i * 1000)   # far apart, so prior buckets go stale
+        gate.verify(f"ip-{i}", "wrong")
+    assert len(gate._buckets) <= 11
+
+
+def test_locked_bucket_survives_pruning():
+    # Eviction must never drop a currently-locked bucket, or a brute-forcer
+    # could clear their own lockout by flooding the gate with junk keys.
+    t = {"v": 0.0}
+    gate = SecretGate(
+        secret_hash=hash_secret("hunter2"),
+        max_attempts=1, lockout_seconds=300,
+        now=lambda: t["v"], max_buckets=5,
+    )
+    assert gate.verify("victim", "wrong") is False   # locks 'victim' until t=300
+    for i in range(100):
+        t["v"] = float(1 + i)                        # still inside lockout window
+        gate.verify(f"noise-{i}", "wrong")
+    t["v"] = 200.0
+    with pytest.raises(LockedOut):
+        gate.verify("victim", "hunter2")
