@@ -2,7 +2,7 @@
   "mcpServers": {
     "obsidian": {
       "command": "uvx",
-      "args": ["mcp-obsidian"],
+      "args": ["--with", "mcp<2", "mcp-obsidian"],
       "env": {
         "OBSIDIAN_API_KEY": "your-rest-plugin-key",
         "OBSIDIAN_HOST": "100.64.0.2",
