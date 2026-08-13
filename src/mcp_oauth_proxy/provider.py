@@ -27,14 +27,31 @@ from .storage import Storage
 # <style>, no scripts), so the CSP can be very tight; frame-ancestors 'none'
 # (plus X-Frame-Options) stops the secret-entry form being clickjacked, and
 # no-store keeps the txn/credential page out of caches.
+#
+# Referrer-Policy is "same-origin", NOT "no-referrer": a no-referrer document
+# makes Chromium send `Origin: null` on the login form's POST navigation, which
+# the MCP transport's Host/Origin guard then rejects as "Forbidden Origin".
+# "same-origin" still sends no referrer cross-origin (the txn id never leaks to
+# the redirect target) while restoring a real Origin header on the same-origin
+# POST so the guard accepts it. The sensitive POST->claude.ai redirect sets its
+# own "no-referrer" separately.
+#
+# CSP intentionally omits `form-action`: a successful login POST responds with a
+# 302 to the client's cross-origin OAuth callback (e.g. https://claude.ai/...),
+# and browsers enforce `form-action` across that redirect — `'self'` would
+# silently block the redirect (login "succeeds" server-side, consuming the txn,
+# but the browser never reaches the callback). The redirect target is already
+# validated server-side against the registered client's redirect_uri, so
+# `form-action` would only be redundant defense here. The remaining directives
+# (default-src 'none', frame-ancestors 'none', base-uri 'none') still stand.
 _SECURITY_HEADERS = {
     "Content-Security-Policy": (
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
+        "default-src 'none'; style-src 'unsafe-inline'; "
         "frame-ancestors 'none'; base-uri 'none'"
     ),
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
+    "Referrer-Policy": "same-origin",
     "Cache-Control": "no-store",
 }
 
