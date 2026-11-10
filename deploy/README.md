@@ -110,6 +110,20 @@ To serve more than one MCP server behind this single connector:
   `reverse_proxy <proxy-container-name>:8000` instead of `127.0.0.1:8000`. After an
   atomic-rename edit to a single-file-bind-mounted Caddyfile, `restart` Caddy (a
   `reload` may read a stale inode).
+- **Connector authenticates, then claude.ai shows a connection error:** the OAuth
+  side is fine — the backend child died. `uvx` re-resolves the backend's deps on
+  every launch, so a new upstream `mcp` SDK release can break the server at import
+  with no change on your side (mcp 2.0.0 broke `mcp-obsidian` exactly this way).
+  Logs show `POST /token → 200`, then the `/mcp` session failing. Confirm and pin:
+  ```
+  docker compose exec proxy sh -c 'uvx mcp-obsidian </dev/null; echo exit=$?'
+  docker compose exec proxy sh -c 'uvx --with "mcp<2" mcp-obsidian </dev/null; echo exit=$?'
+  ```
+  Then set `MCP_BACKEND_ARGS=--with "mcp<2" mcp-obsidian` (or the equivalent
+  `"args": ["--with", "mcp<2", "mcp-obsidian"]` in `servers.json`) and
+  `docker compose up -d`. To pin every uvx backend at once instead, mount a
+  constraints file containing `mcp<2` and set
+  `MCP_BACKEND_ENV_UV_CONSTRAINT=/data/constraints.txt`.
 - **Tools connect but never used by the model:** known claude.ai web quirk; retry
   from a fresh chat or the desktop app. Validate independently with MCP Inspector.
 - **`vault unreachable` tool errors:** home VM/Obsidian down or Tailscale offline.

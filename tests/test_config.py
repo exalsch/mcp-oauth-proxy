@@ -24,7 +24,9 @@ def test_loads_required_and_defaults():
     assert s.access_token_ttl == 3600
     assert s.refresh_token_ttl == 2592000
     assert s.backend_command == "uvx"
-    assert s.backend_args == ["mcp-obsidian"]
+    # The default pins the mcp SDK: uvx re-resolves deps per launch, and an
+    # unconstrained default silently picks up SDK releases that break the backend.
+    assert s.backend_args == ["--with", "mcp<2", "mcp-obsidian"]
     assert s.backend_env == {}
 
 

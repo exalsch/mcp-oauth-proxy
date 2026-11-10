@@ -24,6 +24,10 @@ The proxy is **backend-agnostic**. To expose a different single stdio MCP server
 
 1. Set `MCP_BACKEND_COMMAND` and `MCP_BACKEND_ARGS` to invoke your server (defaults: `uvx` and `mcp-obsidian`).
 2. Use `MCP_BACKEND_ENV_*` to forward environment variables to the backend (e.g., `MCP_BACKEND_ENV_API_KEY=secret` becomes `API_KEY=secret` in the child process).
+3. **Pin the MCP SDK for `uvx` backends.** `uvx` re-resolves dependencies at every
+   launch, so a new upstream `mcp` release can break the backend at import with no
+   change on your side — the connector then authenticates and immediately fails.
+   Add a constraint to the args: `--with "mcp<2" mcp-obsidian`.
 
 Example: to wrap `mcp-github`:
 ```bash
@@ -44,7 +48,7 @@ backend's tools are **namespaced by its config key** (e.g. `obsidian_...`,
 ```json
 {
   "mcpServers": {
-    "obsidian": { "command": "uvx", "args": ["mcp-obsidian"], "env": { "OBSIDIAN_API_KEY": "..." } },
+    "obsidian": { "command": "uvx", "args": ["--with", "mcp<2", "mcp-obsidian"], "env": { "OBSIDIAN_API_KEY": "..." } },
     "github":   { "command": "uvx", "args": ["mcp-github"],   "env": { "GITHUB_TOKEN": "..." } }
   }
 }

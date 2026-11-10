@@ -9,6 +9,13 @@ from urllib.parse import urlsplit
 _BACKEND_ENV_PREFIX = "MCP_BACKEND_ENV_"
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 
+# Default backend invocation (uvx args). The `mcp` SDK bound is deliberate: uvx
+# re-resolves the backend's dependencies on every launch, so an unconstrained
+# default silently adopts each new SDK release — mcp 2.0.0 broke mcp-obsidian at
+# import, which surfaces as a connector that authenticates and then fails to
+# connect. Raise the bound once the backend supports the newer SDK.
+_DEFAULT_BACKEND_ARGS = ["--with", "mcp<2", "mcp-obsidian"]
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -18,7 +25,7 @@ class Settings:
     port: int = 8000
     db_path: str = "data/proxy.db"
     backend_command: str = "uvx"
-    backend_args: list[str] = field(default_factory=lambda: ["mcp-obsidian"])
+    backend_args: list[str] = field(default_factory=lambda: list(_DEFAULT_BACKEND_ARGS))
     backend_env: dict[str, str] = field(default_factory=dict)
     servers_config_path: str | None = None
     access_token_ttl: int = 3600
@@ -62,7 +69,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     access_secret_hash = _require(environ, "MCP_PROXY_ACCESS_SECRET_HASH")
 
     raw_args = environ.get("MCP_BACKEND_ARGS")
-    backend_args = shlex.split(raw_args) if raw_args else ["mcp-obsidian"]
+    backend_args = shlex.split(raw_args) if raw_args else list(_DEFAULT_BACKEND_ARGS)
 
     backend_env = {
         key[len(_BACKEND_ENV_PREFIX):]: val
